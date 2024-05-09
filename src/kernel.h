@@ -1,3 +1,3 @@
 
 
-void vec_sum(int* a, int* b, int* c, int n);
+void game_of_cpu(int* initial, int n, int m, int T);
