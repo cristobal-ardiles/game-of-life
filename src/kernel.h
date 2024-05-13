@@ -1,3 +1,3 @@
 
 
-void game_of_cpu(int* initial, int n, int m, int T);
+void game_of_cpu(unsigned char* initial, int n, int m, int T);

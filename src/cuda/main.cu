@@ -19,23 +19,42 @@ struct Times {
 
 Times t;
 
-bool simulate(int N, int blockSize, int gridSize) {
+unsigned char get_one(float prob){
+  // Obtains 1 with probability prob, and with (1-prob) zero
+  float n = (float) std::rand() / ((float) RAND_MAX + 1);
+  if (n < prob){
+    return 1;
+  }
+  return 0; 
+}
+
+void swap(unsigned char* &a, unsigned char* &b){
+  unsigned char* temp = a;
+  a = b; 
+  b = temp; 
+  return; 
+}
+
+bool simulate(int n, int m, int T, int blockSize, int gridSize) {
   using std::chrono::microseconds;
-  std::size_t size = sizeof(int) * N;
-  std::vector<int> a(N), b(N), c(N);
+  std::size_t size = n*m; 
+  std::vector<unsigned char> initial(size, 0);
 
   // Create the memory buffers
-  int *aDev, *bDev, *cDev;
-  cudaMalloc(&aDev, size);
-  cudaMalloc(&bDev, size);
-  cudaMalloc(&cDev, size);
+  unsigned char *curr, *next;
+  cudaMalloc(&curr, size);
+  cudaMalloc(&next, size);
 
   // Assign values to host variables
   auto t_start = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < N; i++) {
-    a[i] = std::rand() % 2000;
-    b[i] = std::rand() % 2000;
-    c[i] = 0;
+  for (int i=1; i<n-1; i++){
+    int index = i*m + 2; 
+    initial[index] = 1;
+    // for (int j=1; j<m-1; j++){
+    //   int index = i*m+j; 
+      
+    //   initial[index] = get_one(0.5);
+    // }
   }
   auto t_end = std::chrono::high_resolution_clock::now();
   t.create_data =
@@ -43,17 +62,21 @@ bool simulate(int N, int blockSize, int gridSize) {
 
   // Copy values from host variables to device
   t_start = std::chrono::high_resolution_clock::now();
-  cudaMemcpy(aDev, a.data(), size, cudaMemcpyHostToDevice);
-  cudaMemcpy(bDev, b.data(), size, cudaMemcpyHostToDevice);
+  cudaMemcpy(curr, initial.data(), size, cudaMemcpyHostToDevice);
+  cudaMemset(next,0,size);
   t_end = std::chrono::high_resolution_clock::now();
   t.copy_to_device =
       std::chrono::duration_cast<microseconds>(t_end - t_start).count();
 
 
   // Execute the function on the device (using 32 threads here)
+  std::cout << "Running kernel " << T << " times" << std::endl; 
   t_start = std::chrono::high_resolution_clock::now();
-  vec_sum<<<blockSize, gridSize>>>(aDev, bDev, cDev, N);
-  cudaDeviceSynchronize();
+  for (int tm=0; tm<T; tm++){
+    game_of_cuda<<<gridSize, blockSize>>>(curr, next, n, m);
+    cudaDeviceSynchronize();
+    swap(curr,next); 
+  }
   t_end = std::chrono::high_resolution_clock::now();
   t.execution =
       std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start)
@@ -61,18 +84,13 @@ bool simulate(int N, int blockSize, int gridSize) {
 
   // Copy the output variable from device to host
   t_start = std::chrono::high_resolution_clock::now();
-  cudaMemcpy(c.data(), cDev, size, cudaMemcpyDeviceToHost);
+  cudaMemcpy(initial.data(), curr, size, cudaMemcpyDeviceToHost);
   t_end = std::chrono::high_resolution_clock::now();
   t.copy_to_host =
       std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start)
           .count();
 
   // Print the result
-  std::cout << "RESULTS: " << std::endl;
-  for (int i = 0; i < N; i++)
-    std::cout << "  out[" << i << "]: " << c[i] << " (" << a[i] << " + " << b[i]
-              << ")\n";
-
   std::cout << "Time to create data: " << t.create_data << " microseconds\n";
   std::cout << "Time to copy data to device: " << t.copy_to_device
             << " microseconds\n";
@@ -86,31 +104,33 @@ bool simulate(int N, int blockSize, int gridSize) {
 }
 
 int main(int argc, char* argv[]) {
-  if (argc != 5) {
-    std::cerr << "Uso: " << argv[0] << " <array size> <block size> <grid size> <output file>"
+  if (argc != 7) {
+    std::cerr << "Uso: " << argv[0] << " <rows> <columns> <periods> <block size> <grid size> <output file>"
               << std::endl;
     return 2;
   }
   int n = std::stoi(argv[1]);
-  int bs = std::stoi(argv[2]);
-  int gs = std::stoi(argv[3]);
+  int m = std::stoi(argv[2]);
+  int T = std::stoi(argv[3]);
+  int bs = std::stoi(argv[4]);
+  int gs = std::stoi(argv[5]);
 
-  if (!simulate(n, bs, gs)) {
+  if (!simulate(n, m, T, bs, gs)) {
     std::cerr << "CUDA: Error while executing the simulation" << std::endl;
     return 3;
   }
 
   std::ofstream out;
-  out.open(argv[4], std::ios::app | std::ios::out);
+  out.open(argv[6], std::ios::app | std::ios::out);
   if (!out.is_open()) {
     std::cerr << "Error while opening file: '" << argv[2] << "'" << std::endl;
     return 4;
   }
   // params
-  out << n << "," << bs << "," << gs << ",";
+  out << n << ',' << m << ',' << T << "," << bs << "," << gs << ",";
   // times
   out << t.create_data << "," << t.copy_to_device << "," << t.execution << "," << t.copy_to_host << "," << t.total() << "\n";
 
-  std::cout << "Data written to " << argv[4] << std::endl;
+  std::cout << "Data written to " << argv[6] << std::endl;
   return 0;
 }

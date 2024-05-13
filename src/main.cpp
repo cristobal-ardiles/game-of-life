@@ -5,6 +5,7 @@
 
 #include "kernel.h"
 
+
 struct Times {
   long create_data;
   long execution;
@@ -14,15 +15,26 @@ struct Times {
 
 Times t;
 
+unsigned char get_one(float prob){
+  // Obtains 1 with probability prob, and with (1-prob) zero
+  float n = (float) std::rand() / ((float) RAND_MAX + 1);
+  if (n < prob){
+    return 1;
+  }
+  return 0; 
+}
+
 bool simulate(int n, int m, int T) {
   using std::chrono::microseconds;
   int size = n*m;
-  std::vector<int> initial(size,0);
+  std::vector<unsigned char> initial(size,0);
 
   auto t_start = std::chrono::high_resolution_clock::now();
-  for (int i=1; i<n-1; i++){
-    int index = i*m + 2; 
-    initial[index] = 1; 
+  for (int i=1; i<n; i++){
+    for (int j=1; j<m; j++){
+      int index = i*m+j; 
+      initial[index] = get_one(0.5);
+    }
   }
   auto t_end = std::chrono::high_resolution_clock::now();
   t.create_data =
@@ -35,12 +47,6 @@ bool simulate(int n, int m, int T) {
       std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start)
           .count();
 
-  // Print the result
-  // std::cout << "RESULTS: " << std::endl;
-  // for (int i = 0; i < N; i++)
-  //   std::cout << "  out[" << i << "]: " << c[i] << " (" << a[i] << " + " << b[i]
-  //             << ")\n";
-
   std::cout << "Time to create data: " << t.create_data << " microseconds\n";
   std::cout << "Time to execute kernel: " << t.execution << " microseconds\n";
   std::cout << "Time to execute the whole program: " << t.total()
@@ -50,8 +56,8 @@ bool simulate(int n, int m, int T) {
 }
 
 int main(int argc, char* argv[]) {
-  if (argc != 4) {
-    std::cerr << "Uso: " << argv[0] << " <rows> <columns> <periods>"
+  if (argc != 5) {
+    std::cerr << "Uso: " << argv[0] << " <rows> <columns> <periods> <out_file>"
               << std::endl;
     return 2;
   }
@@ -64,15 +70,15 @@ int main(int argc, char* argv[]) {
     return 3;
   }
 
-  // std::ofstream out;
-  // out.open(argv[2], std::ios::app | std::ios::out);
-  // if (!out.is_open()) {
-  //   std::cerr << "Error while opening file: '" << argv[2] << "'" << std::endl;
-  //   return 4;
-  // }
-  // out << n << "," << t.create_data << "," << t.execution << "," << t.total()
-  //     << "\n";
+  std::ofstream out;
+  out.open(argv[4], std::ios::app | std::ios::out);
+  if (!out.is_open()) {
+    std::cerr << "Error while opening file: '" << argv[2] << "'" << std::endl;
+    return 4;
+  }
+  out << n << ',' << m << ',' << T << "," << t.create_data << "," << t.execution << "," << t.total()
+      << "\n";
 
-  // std::cout << "Data written to " << argv[2] << std::endl;
+  std::cout << "Data written to " << argv[2] << std::endl;
   return 0;
 }
