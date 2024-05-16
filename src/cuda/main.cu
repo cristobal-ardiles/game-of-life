@@ -44,17 +44,14 @@ bool simulate(int n, int m, int T, int blockSize, int gridSize) {
   unsigned char *curr, *next;
   cudaMalloc(&curr, size);
   cudaMalloc(&next, size);
-
+  
   // Assign values to host variables
   auto t_start = std::chrono::high_resolution_clock::now();
-  for (int i=1; i<n-1; i++){
-    int index = i*m + 2; 
-    initial[index] = 1;
-    // for (int j=1; j<m-1; j++){
-    //   int index = i*m+j; 
-      
-    //   initial[index] = get_one(0.5);
-    // }
+  for (int i=0; i<n; i++){
+    for(int j=0; j<m; j++){
+      int index = i*m + j; 
+      initial[index] = get_one(0.4);
+    }
   }
   auto t_end = std::chrono::high_resolution_clock::now();
   t.create_data =
@@ -68,13 +65,12 @@ bool simulate(int n, int m, int T, int blockSize, int gridSize) {
   t.copy_to_device =
       std::chrono::duration_cast<microseconds>(t_end - t_start).count();
 
-
   // Execute the function on the device (using 32 threads here)
-  std::cout << "Running kernel " << T << " times" << std::endl; 
   t_start = std::chrono::high_resolution_clock::now();
   for (int tm=0; tm<T; tm++){
     game_of_cuda<<<gridSize, blockSize>>>(curr, next, n, m);
     cudaDeviceSynchronize();
+    const cudaError_t err = cudaGetLastError();
     swap(curr,next); 
   }
   t_end = std::chrono::high_resolution_clock::now();
