@@ -52,22 +52,22 @@ bool init() {
   return true;
 }
 
-bool simulate(int N, int localSize, int globalSize) {
+bool simulate(int n, int m, int T, int localSize, int globalSize) {
   using std::chrono::microseconds;
-  std::size_t size = sizeof(int) * N;
-  std::vector<int> a(N), b(N), c(N);
+  std::size_t size = n*m;
+  std::size_t mem_size = size * sizeof(unsigned char); 
+  std::vector<unsigned char> initial(size, 0);
+  std::vector<unsigned char> base_next(size, 0); 
 
   // Create the memory buffers
-  cl::Buffer aBuff(queue.getInfo<CL_QUEUE_CONTEXT>(), CL_MEM_READ_WRITE, size);
-  cl::Buffer bBuff(queue.getInfo<CL_QUEUE_CONTEXT>(), CL_MEM_READ_WRITE, size);
-  cl::Buffer cBuff(queue.getInfo<CL_QUEUE_CONTEXT>(), CL_MEM_READ_WRITE, size);
+  cl::Buffer curr(queue.getInfo<CL_QUEUE_CONTEXT>(), CL_MEM_READ_WRITE, mem_size);
+  cl::Buffer next(queue.getInfo<CL_QUEUE_CONTEXT>(), CL_MEM_READ_WRITE, mem_size);
 
   // Assign values to host variables
   auto t_start = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < N; i++) {
-    a[i] = std::rand() % 2000;
-    b[i] = std::rand() % 2000;
-    c[i] = 0;
+  for (int i = 1; i < size-1; i++) {
+    int index = i*m + 2;
+    initial[index] = 1; 
   }
   auto t_end = std::chrono::high_resolution_clock::now();
   t.create_data =
@@ -76,28 +76,34 @@ bool simulate(int N, int localSize, int globalSize) {
   // Copy values from host variables to device
   t_start = std::chrono::high_resolution_clock::now();
   // usar CL_FALSE para hacerlo asíncrono
-  queue.enqueueWriteBuffer(aBuff, CL_TRUE, 0, size, a.data());
-  queue.enqueueWriteBuffer(bBuff, CL_TRUE, 0, size, b.data());
+  queue.enqueueWriteBuffer(curr, CL_TRUE, 0, mem_size, initial.data());
+  queue.enqueueWriteBuffer(next, CL_TRUE, 0, mem_size, base_next.data());
   t_end = std::chrono::high_resolution_clock::now();
   t.copy_to_device =
       std::chrono::duration_cast<microseconds>(t_end - t_start).count();
 
   // Make kernel
-  cl::Kernel kernel(prog, "vec_sum");
+  cl::Kernel kernel(prog, "game_of_cl");
 
   // Set the kernel arguments
-  kernel.setArg(0, aBuff);
-  kernel.setArg(1, bBuff);
-  kernel.setArg(2, cBuff);
-  kernel.setArg(3, N);
+  kernel.setArg(0, curr);
+  kernel.setArg(1, next);
+  kernel.setArg(2, n);
+  kernel.setArg(3, m);
 
   // Execute the function on the device (using 32 threads here)
   cl::NDRange gSize(globalSize);
   cl::NDRange lSize(localSize);
 
   t_start = std::chrono::high_resolution_clock::now();
-  queue.enqueueNDRangeKernel(kernel, cl::NullRange, globalSize, localSize);
-  queue.finish();
+  cl::Buffer *curr_ptr = &curr;
+  cl::Buffer *next_ptr = &next; 
+  for (int t=0; t<T; t++){
+    kernel.setArg()
+    queue.enqueueNDRangeKernel(kernel, cl::NullRange, globalSize, localSize);
+    queue.finish();
+
+  }
   t_end = std::chrono::high_resolution_clock::now();
   t.execution =
       std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start)
@@ -105,7 +111,7 @@ bool simulate(int N, int localSize, int globalSize) {
 
   // Copy the output variable from device to host
   t_start = std::chrono::high_resolution_clock::now();
-  queue.enqueueReadBuffer(cBuff, CL_TRUE, 0, size, c.data());
+  queue.enqueueReadBuffer(curr, CL_TRUE, 0, mem_size, initial.data());
   t_end = std::chrono::high_resolution_clock::now();
   t.copy_to_host =
       std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start)
